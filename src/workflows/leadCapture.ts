@@ -1,3 +1,4 @@
+import { whatsappService } from '../services/whatsappService';
 import { prisma } from '../services/db';
 import { sheetsService } from '../services/sheetsService';
 import { voiceService } from '../services/voiceService';

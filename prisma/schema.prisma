@@ -1,0 +1,64 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Lead {
+  id               Int       @id @default(autoincrement())
+  name             String
+  phone            String    @unique // Expecting E.164 format
+  email            String?
+  lastContacted DateTime?
+  source           String    @default("Manual")
+  
+  // Call status: Pending, Called_Answered, Called_Unanswered, Callback_Requested
+  callStatus       String    @default("Pending")
+  
+  // Lead Progress Status: New, Contacted, Interested, Visited, Converted, Dead
+  leadStatus       String    @default("New")
+  
+  // --- AGENT FIELDS ---
+  intentScore      Int       @default(0)    // 0-100 indicating likelihood to buy
+  leadTemperature  String    @default("Cold") // Hot, Warm, Cold
+  nextBestAction   String?   // AI decided next action (e.g. "Call immediately", "Send WhatsApp offer")
+  aiSummary        String?   // Summary of the lead's state and context drawn from calls/messages
+  
+  // --- BEHAVIOR ---
+  interactionCount Int       @default(0)
+  lastInteraction  DateTime?
+  
+  // --- SCHEDULING ---
+  followUpStage    Int       @default(0)
+  nextFollowUpDate DateTime?
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  calls            CallLog[]
+  messages         MessageLog[]
+}
+
+model CallLog {
+  id        Int      @id @default(autoincrement())
+  leadId    Int
+  lead      Lead     @relation(fields: [leadId], references: [id])
+  status    String   // Answered, Unanswered, Failed
+  notes     String?  // Summary fetched from Vapi
+  createdAt DateTime @default(now())
+}
+
+model MessageLog {
+  id        Int      @id @default(autoincrement())
+  leadId    Int
+  lead      Lead     @relation(fields: [leadId], references: [id])
+  direction String   // Inbound, Outbound
+  content   String
+  createdAt DateTime @default(now())
+}

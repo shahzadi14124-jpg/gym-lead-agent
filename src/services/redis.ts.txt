@@ -1,0 +1,15 @@
+import IORedis from "ioredis";
+
+export const connection = new IORedis(process.env.REDIS_URL!, {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+  retryStrategy: (times) => Math.min(times * 50, 2000),
+});
+
+connection.on("connect", () => {
+  console.log("[Redis] Connected to Redis queue server.");
+});
+
+connection.on("error", (err) => {
+  console.error("[Redis Error]", err);
+});

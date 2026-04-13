@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+credentials.json
+dev.db
+dev.db-journal
+test-sheets.ts
+test-workflow.ts

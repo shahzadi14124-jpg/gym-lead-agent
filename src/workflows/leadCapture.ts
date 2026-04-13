@@ -46,10 +46,7 @@ export async function handleNewLead(data: { name: string; phone: string; email?:
   // 3. Initiate Instant Call
   try {
     await voiceService.initiateCall(lead.phone, lead.name, lead.id);
-    await whatsappService.sendMessage({
-  phone: lead.phone,
-  name: lead.name
-});
+    await whatsappService.sendMessage(lead.phone, lead.name);
     // Note: the webhook from Vapi will handle the outcome of the call.
   } catch (err) {
     console.error('Failed to initiate call for new lead', err);

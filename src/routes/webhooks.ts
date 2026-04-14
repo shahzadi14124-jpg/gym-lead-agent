@@ -1,11 +1,4 @@
-import { Router, Request, Response } from 'express';
-import { processNewLead } from '../agents/leadIntakeAgent';
-import { prisma } from '../services/db';
-import { decisionQueue } from '../queues/agentQueue'; // This is now a "let" variable
-
-export const webhookRouter = Router();
-
-// ... (keep all your existing /lead and /voice routes exactly as they are) ...
+// ... existing code at the top ...
 
 webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
   try {
@@ -27,13 +20,9 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
       data: { leadId: lead.id, direction: 'Inbound', content: Body }
     });
 
-    // SAFETY CHECK: Make sure the queue is ready before adding
-    if (decisionQueue) {
-      console.log(`[Webhook] Adding Job to Decision Queue for ${cleanPhone}`);
-      await decisionQueue.add('evaluate-lead', { leadId: lead.id, triggerEvent: 'WHATSAPP_REPLY' });
-    } else {
-      console.error('[CRITICAL] Decision Queue is not initialized yet!');
-    }
+    // We add it to the Decision Brain here!
+    console.log(`[Webhook] Sending ${cleanPhone} to the AI Brain...`);
+    await decisionQueue.add('evaluate-lead', { leadId: lead.id, triggerEvent: 'WHATSAPP_REPLY' });
 
     res.status(200).send('<Response></Response>'); 
   } catch (error) {

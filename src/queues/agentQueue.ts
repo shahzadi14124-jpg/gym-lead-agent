@@ -3,7 +3,6 @@ import { redisConnection } from './redisClient';
 import { processDecisionJob } from '../agents/decisionAgent';
 import { processWhatsappJob } from '../agents/whatsappAgent';
 
-// Using the same shared line for all Queues
 export const decisionQueue = new Queue('decision-queue', { connection: redisConnection });
 export const whatsappQueue = new Queue('whatsapp-queue', { connection: redisConnection });
 export const voiceQueue = new Queue('voice-queue', { connection: redisConnection });
@@ -11,7 +10,6 @@ export const voiceQueue = new Queue('voice-queue', { connection: redisConnection
 export function startWorkers() {
   console.log('>>> [STARTUP] Starting AI Workers...');
 
-  // Using the same shared line for all Workers
   new Worker('decision-queue', async (job) => {
     await processDecisionJob(job.data.leadId, job.data.triggerEvent);
   }, { connection: redisConnection });
@@ -20,5 +18,5 @@ export function startWorkers() {
     await processWhatsappJob(job.data.leadId, job.data.instruction, job.data.context);
   }, { connection: redisConnection });
 
-  console.log('>>> [SUCCESS] AI Workers are now ACTIVE and listening to the Cloud Box!');
+  console.log('>>> [SUCCESS] AI Workers are now ACTIVE!');
 }

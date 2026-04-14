@@ -2,11 +2,11 @@ import Redis from 'ioredis';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 
-// One single, shared connection for everything
+// One single, shared connection for everything - much more stable!
 export const redisConnection = new Redis(REDIS_URL, {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
-  connectTimeout: 10000, // Wait 10 seconds for a handshake
+  connectTimeout: 10000, 
   tls: REDIS_URL.startsWith('rediss://') ? {} : undefined,
 });
 

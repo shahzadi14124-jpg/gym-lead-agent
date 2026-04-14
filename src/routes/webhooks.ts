@@ -7,7 +7,6 @@ export const webhookRouter = Router();
 
 webhookRouter.post('/lead', async (req: Request, res: Response) => {
   try {
-    // Quickly offload to intake agent (could also be queued if traffic is insane)
     const lead = await processNewLead(req.body);
     res.status(200).json({ success: true, leadId: lead.id });
   } catch (error: any) {
@@ -38,7 +37,6 @@ webhookRouter.post('/voice', async (req: Request, res: Response) => {
           data: { callStatus }
         });
         
-        // Immediately feed this new context into the Brain
         await decisionQueue.add('evaluate-lead', { leadId, triggerEvent: 'VOICE_CALL_ENDED' });
       }
     }
@@ -54,20 +52,21 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
   try {
     const { From, Body } = req.body;
     
-    let lead = await prisma.lead.findUnique({ where: { phone: From } });
+    // Clean Twilio's "whatsapp:+1234567890" string
+    const cleanPhone = From.replace('whatsapp:', '');
+    
+    let lead = await prisma.lead.findUnique({ where: { phone: cleanPhone } });
     
     if (!lead) {
-      console.log(`[Webhook] Unsolicited WhatsApp message from ${From}. Creating new lead...`);
-      // If they aren't in the database yet, put them in as a new lead!
+      console.log(`[Webhook] Unsolicited message from ${cleanPhone}. Creating new lead...`);
       lead = await processNewLead({ 
         name: "Unknown WhatsApp", 
-        phone: From, 
+        phone: cleanPhone, 
         source: "Inbound WhatsApp",
         messageContext: Body 
       });
     }
 
-    // Now definitely proceed, since they exist now
     await prisma.messageLog.create({
       data: { leadId: lead.id, direction: 'Inbound', content: Body }
     });
@@ -77,7 +76,7 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
       data: { interactionCount: lead.interactionCount + 1 }
     });
 
-    console.log(`[Webhook] WhatsApp reply from ${From}. Queueing Decision Agent.`);
+    console.log(`[Webhook] WhatsApp reply from ${cleanPhone}. Queueing Decision Agent.`);
     await decisionQueue.add('evaluate-lead', { leadId: lead.id, triggerEvent: 'WHATSAPP_REPLY' });
 
     res.status(200).send('<Response></Response>'); 

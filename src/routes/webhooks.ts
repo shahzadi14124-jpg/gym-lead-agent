@@ -54,22 +54,31 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
   try {
     const { From, Body } = req.body;
     
-    const lead = await prisma.lead.findUnique({ where: { phone: From } });
+    let lead = await prisma.lead.findUnique({ where: { phone: From } });
     
-    if (lead) {
-      await prisma.messageLog.create({
-        data: { leadId: lead.id, direction: 'Inbound', content: Body }
+    if (!lead) {
+      console.log(`[Webhook] Unsolicited WhatsApp message from ${From}. Creating new lead...`);
+      // If they aren't in the database yet, put them in as a new lead!
+      lead = await processNewLead({ 
+        name: "Unknown WhatsApp", 
+        phone: From, 
+        source: "Inbound WhatsApp",
+        messageContext: Body 
       });
-
-      // Increase interaction count and trigger the brain
-      await prisma.lead.update({
-        where: { id: lead.id },
-        data: { interactionCount: lead.interactionCount + 1 }
-      });
-
-      console.log(`[Webhook] WhatsApp reply from ${From}. Queueing Decision Agent.`);
-      await decisionQueue.add('evaluate-lead', { leadId: lead.id, triggerEvent: 'WHATSAPP_REPLY' });
     }
+
+    // Now definitely proceed, since they exist now
+    await prisma.messageLog.create({
+      data: { leadId: lead.id, direction: 'Inbound', content: Body }
+    });
+
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: { interactionCount: lead.interactionCount + 1 }
+    });
+
+    console.log(`[Webhook] WhatsApp reply from ${From}. Queueing Decision Agent.`);
+    await decisionQueue.add('evaluate-lead', { leadId: lead.id, triggerEvent: 'WHATSAPP_REPLY' });
 
     res.status(200).send('<Response></Response>'); 
   } catch (error) {

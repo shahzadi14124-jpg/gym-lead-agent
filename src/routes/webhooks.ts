@@ -1,11 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { processNewLead } from '../agents/leadIntakeAgent';
 import { prisma } from '../services/db';
-import { decisionQueue } from '../queues/agentQueue'; 
+import { decisionQueue } from '../queues/queueDefinitions'; 
 
 export const webhookRouter = Router();
 
-// Route for website form leads
 webhookRouter.post('/lead', async (req: Request, res: Response) => {
   try {
     const lead = await processNewLead(req.body);
@@ -16,7 +15,6 @@ webhookRouter.post('/lead', async (req: Request, res: Response) => {
   }
 });
 
-// Route for voice call reports
 webhookRouter.post('/voice', async (req: Request, res: Response) => {
   try {
     const payload = req.body;
@@ -29,11 +27,7 @@ webhookRouter.post('/voice', async (req: Request, res: Response) => {
         const summary = callData.summary || 'No summary available';
         await prisma.callLog.create({ data: { leadId, status: callStatus, notes: summary } });
         await prisma.lead.update({ where: { id: leadId }, data: { callStatus } });
-        
-        if (decisionQueue) {
-          console.log(`[Voice Webhook] Triggering Brain for Lead ${leadId}`);
-          await decisionQueue.add('evaluate-lead', { leadId, triggerEvent: 'VOICE_CALL_ENDED' });
-        }
+        await decisionQueue.add('evaluate-lead', { leadId, triggerEvent: 'VOICE_CALL_ENDED' });
       }
     }
     res.status(200).send('OK');
@@ -43,42 +37,22 @@ webhookRouter.post('/voice', async (req: Request, res: Response) => {
   }
 });
 
-// Route for WhatsApp messages
 webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
   try {
     const { From, Body } = req.body;
     const cleanPhone = From.replace('whatsapp:', '');
-    console.log(`[WhatsApp Webhook] Incoming message from: ${cleanPhone}`);
+    console.log(`[WhatsApp Webhook] Message from: ${cleanPhone}`);
 
-    // 1. Find or create the lead (just ONCE)
     let lead = await prisma.lead.findUnique({ where: { phone: cleanPhone } });
-    
     if (!lead) {
-      console.log(`[Webhook] Creating NEW profile for ${cleanPhone}`);
-      lead = await processNewLead({ 
-        name: "Unknown WhatsApp", 
-        phone: cleanPhone, 
-        source: "Inbound WhatsApp",
-        messageContext: Body 
-      });
+      lead = await processNewLead({ name: "Unknown WhatsApp", phone: cleanPhone, source: "Inbound WhatsApp", messageContext: Body });
     }
 
-    // 2. Log the message (just ONCE)
-    await prisma.messageLog.create({
-      data: { leadId: lead.id, direction: 'Inbound', content: Body }
-    });
+    await prisma.messageLog.create({ data: { leadId: lead.id, direction: 'Inbound', content: Body } });
+    await prisma.lead.update({ where: { id: lead.id }, data: { interactionCount: lead.interactionCount + 1 } });
 
-    // 3. Update the interaction count
-    await prisma.lead.update({
-      where: { id: lead.id },
-      data: { interactionCount: lead.interactionCount + 1 }
-    });
-
-    // 4. Trigger the Brain (just ONCE)
-    if (decisionQueue) {
-      console.log(`[Webhook] Sending to AI Brain: ${cleanPhone}`);
-      await decisionQueue.add('evaluate-lead', { leadId: lead.id, triggerEvent: 'WHATSAPP_REPLY' });
-    }
+    console.log(`[Webhook] Sending ${cleanPhone} to the AI Brain...`);
+    await decisionQueue.add('evaluate-lead', { leadId: lead.id, triggerEvent: 'WHATSAPP_REPLY' });
 
     res.status(200).send('<Response></Response>'); 
   } catch (error) {

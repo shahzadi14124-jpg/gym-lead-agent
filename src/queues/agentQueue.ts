@@ -3,14 +3,18 @@ import { createRedisConnection } from './redisClient';
 import { processDecisionJob } from '../agents/decisionAgent';
 import { processWhatsappJob } from '../agents/whatsappAgent';
 
-// Open separate "phone lines" for each queue
-export const decisionQueue = new Queue('decision-queue', { connection: createRedisConnection() });
-export const whatsappQueue = new Queue('whatsapp-queue', { connection: createRedisConnection() });
-export const voiceQueue = new Queue('voice-queue', { connection: createRedisConnection() });
+export let decisionQueue: Queue;
+export let whatsappQueue: Queue;
+export let voiceQueue: Queue;
 
-// Start the AI workers with their own connections
 export function startWorkers() {
-  console.log('Starting Agent Workers...');
+  console.log('>>> [STARTUP] Initializing Agent Queues...');
+  
+  decisionQueue = new Queue('decision-queue', { connection: createRedisConnection() });
+  whatsappQueue = new Queue('whatsapp-queue', { connection: createRedisConnection() });
+  voiceQueue = new Queue('voice-queue', { connection: createRedisConnection() });
+
+  console.log('>>> [STARTUP] Launching AI Workers...');
 
   new Worker('decision-queue', async (job) => {
     const { leadId, triggerEvent } = job.data;
@@ -22,14 +26,5 @@ export function startWorkers() {
     await processWhatsappJob(leadId, instruction, context);
   }, { connection: createRedisConnection() });
 
-  new Worker('voice-queue', async (job) => {
-    const { leadId } = job.data;
-    const { prisma } = await import('../services/db');
-    const { voiceService } = await import('../services/voiceService');
-    
-    const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-    if (lead && lead.phone) {
-      await voiceService.initiateCall(lead.phone, lead.name, lead.id);
-    }
-  }, { connection: createRedisConnection() });
+  console.log('>>> [STARTUP] Agent Workers are now ACTIVE and listening to Redis!');
 }

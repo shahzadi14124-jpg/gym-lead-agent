@@ -1,30 +1,22 @@
 import { Queue, Worker } from 'bullmq';
-import { createRedisConnection } from './redisClient';
+import { redisConnection } from './redisClient';
 import { processDecisionJob } from '../agents/decisionAgent';
 import { processWhatsappJob } from '../agents/whatsappAgent';
 
-export let decisionQueue: Queue;
-export let whatsappQueue: Queue;
-export let voiceQueue: Queue;
+export const decisionQueue = new Queue('decision-queue', { connection: redisConnection });
+export const whatsappQueue = new Queue('whatsapp-queue', { connection: redisConnection });
+export const voiceQueue = new Queue('voice-queue', { connection: redisConnection });
 
 export function startWorkers() {
-  console.log('>>> [STARTUP] Initializing Agent Queues...');
-  
-  decisionQueue = new Queue('decision-queue', { connection: createRedisConnection() });
-  whatsappQueue = new Queue('whatsapp-queue', { connection: createRedisConnection() });
-  voiceQueue = new Queue('voice-queue', { connection: createRedisConnection() });
-
-  console.log('>>> [STARTUP] Launching AI Workers...');
+  console.log('>>> [STARTUP] Starting AI Workers...');
 
   new Worker('decision-queue', async (job) => {
-    const { leadId, triggerEvent } = job.data;
-    await processDecisionJob(leadId, triggerEvent);
-  }, { connection: createRedisConnection() });
+    await processDecisionJob(job.data.leadId, job.data.triggerEvent);
+  }, { connection: redisConnection });
 
   new Worker('whatsapp-queue', async (job) => {
-    const { leadId, instruction, context } = job.data;
-    await processWhatsappJob(leadId, instruction, context);
-  }, { connection: createRedisConnection() });
+    await processWhatsappJob(job.data.leadId, job.data.instruction, job.data.context);
+  }, { connection: redisConnection });
 
-  console.log('>>> [STARTUP] Agent Workers are now ACTIVE and listening to Redis!');
+  console.log('>>> [SUCCESS] AI Workers are now ACTIVE and listening to the Cloud Box!');
 }

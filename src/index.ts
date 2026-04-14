@@ -21,14 +21,9 @@ app.get('/health', (req, res) => {
 });
 
 // Start Server & Queue Workers
-import { startWorkers } from './queues/agentQueue';
-
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   
-  startWorkers();
-});
-  
   // Initialize BullMQ Agent Workers
- // startWorkers();
+  startWorkers(); 
 });

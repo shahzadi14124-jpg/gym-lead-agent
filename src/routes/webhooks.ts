@@ -1,45 +1,18 @@
-import { Queue, Worker } from 'bullmq';
-import { createRedisConnection } from './redisClient';
+import Redis from 'ioredis';
 
-// Import our agents (to be implemented)
-import { processDecisionJob } from '../agents/decisionAgent';
-import { processWhatsappJob } from '../agents/whatsappAgent';
+const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 
-// Queues
-export const decisionQueue = new Queue('decision-queue', { connection: createRedisConnection() });
-export const whatsappQueue = new Queue('whatsapp-queue', { connection: createRedisConnection() });
-export const voiceQueue = new Queue('voice-queue', { connection: createRedisConnection() });
+// Factory function to give every worker its own isolated connection
+export const createRedisConnection = () => {
+  const conn = new Redis(REDIS_URL, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    keepAlive: 10000, // Forces the connection to stay alive every 10 seconds
+    tls: REDIS_URL.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
+  });
 
-// Workers to process the queues
-export function startWorkers() {
-  console.log('Starting Agent Workers...');
-
-  // 1. Decision Worker: Decides what actions to take on a lead
-  const decisionWorker = new Worker('decision-queue', async (job) => {
-    const { leadId, triggerEvent } = job.data;
-    await processDecisionJob(leadId, triggerEvent);
-  }, { connection: createRedisConnection() });
-
-  // 2. WhatsApp Worker: Formats and sends WhatsApp messages
-  const whatsappWorker = new Worker('whatsapp-queue', async (job) => {
-    const { leadId, instruction, context } = job.data;
-    await processWhatsappJob(leadId, instruction, context);
-  }, { connection: createRedisConnection() });
-
-  // 3. Voice Worker: Triggers Vapi outbound calls
-  const voiceWorker = new Worker('voice-queue', async (job) => {
-    const { leadId } = job.data;
-    const { prisma } = await import('../services/db');
-    const { voiceService } = await import('../services/voiceService');
-    
-    const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-    if (lead && lead.phone) {
-      await voiceService.initiateCall(lead.phone, lead.name, lead.id);
-    }
-  }, { connection: createRedisConnection() });
-
-  // Error logging
-  decisionWorker.on('error', err => {});
-  whatsappWorker.on('error', err => {});
-  voiceWorker.on('error', err => {});
-}
+  conn.on('error', (err) => {
+    // Suppress logs; BullMQ will automatically reconnect when needed
+  });
+  return conn;
+};

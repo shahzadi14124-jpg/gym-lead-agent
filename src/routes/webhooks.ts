@@ -27,8 +27,10 @@ webhookRouter.post('/voice', async (req: Request, res: Response) => {
         const summary = callData.summary || 'No summary available';
         await prisma.callLog.create({ data: { leadId, status: callStatus, notes: summary } });
         await prisma.lead.update({ where: { id: leadId }, data: { callStatus } });
-        console.log(`[Voice Webhook] Queuing Brain for Lead ${leadId}`);
-        await decisionQueue.add('evaluate-lead', { leadId, triggerEvent: 'VOICE_CALL_ENDED' });
+        
+        if (decisionQueue) {
+          await decisionQueue.add('evaluate-lead', { leadId, triggerEvent: 'VOICE_CALL_ENDED' });
+        }
       }
     }
     res.status(200).send('OK');
@@ -42,23 +44,33 @@ webhookRouter.post('/whatsapp', async (req: Request, res: Response) => {
   try {
     const { From, Body } = req.body;
     const cleanPhone = From.replace('whatsapp:', '');
-    console.log(`[WhatsApp Webhook] Incoming from ${cleanPhone}`);
+    console.log(`[WhatsApp Webhook] Message from: ${cleanPhone}`);
 
     let lead = await prisma.lead.findUnique({ where: { phone: cleanPhone } });
+    
     if (!lead) {
-      console.log(`[Webhook] New Lead detected: ${cleanPhone}`);
-      lead = await processNewLead({ name: "Unknown WhatsApp", phone: cleanPhone, source: "Inbound WhatsApp", messageContext: Body });
+      console.log(`[Webhook] Creating new profile for: ${cleanPhone}`);
+      lead = await processNewLead({ 
+        name: "Unknown WhatsApp", 
+        phone: cleanPhone, 
+        source: "Inbound WhatsApp",
+        messageContext: Body 
+      });
     }
 
-    await prisma.messageLog.create({ data: { leadId: lead.id, direction: 'Inbound', content: Body } });
-    await prisma.lead.update({ where: { id: lead.id }, data: { interactionCount: lead.interactionCount + 1 } });
+    await prisma.messageLog.create({
+      data: { leadId: lead.id, direction: 'Inbound', content: Body }
+    });
 
-    // CRITICAL PART: Adding to queue
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: { interactionCount: lead.interactionCount + 1 }
+    });
+
+    // THE AI BRAIN TRIGGER
     if (decisionQueue) {
-      console.log(`[Webhook] Dropping sticky note into Decision Queue for ${cleanPhone}...`);
+      console.log(`[Webhook] Sending to Decision Brain for: ${cleanPhone}`);
       await decisionQueue.add('evaluate-lead', { leadId: lead.id, triggerEvent: 'WHATSAPP_REPLY' });
-    } else {
-      console.error('[CRITICAL ERROR] The Decision Queue Box was missing!');
     }
 
     res.status(200).send('<Response></Response>'); 

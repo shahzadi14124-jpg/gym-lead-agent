@@ -9,7 +9,7 @@ export async function processDecisionJob(leadId: number, triggerEvent: string) {
     const lead = await prisma.lead.findUnique({ where: { id: leadId } });
     if (!lead) return;
 
-    if (triggerEvent === 'WHATSAPP_REPLY') {
+    if (triggerEvent === 'WHATSAPP_REPLY' || triggerEvent === 'NEW_LEAD') {
       const recentMessages = await prisma.messageLog.findMany({
         where: { leadId: lead.id },
         orderBy: { createdAt: 'desc' },
@@ -21,14 +21,14 @@ export async function processDecisionJob(leadId: number, triggerEvent: string) {
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: 'You are the core logic brain for a gym lead management bot. Based on the conversation history, determine the EXACT state of the lead. Output one of: "INTERESTED", "BUSY", "NOT_INTERESTED", "NEEDS_INFO"' },
+          { role: 'system', content: 'You are the logic brain for a gym bot. Output one of: "INTERESTED", "BUSY", "NOT_INTERESTED", "NEEDS_INFO"' },
           { role: 'user', content: contextStr }
         ]
       });
 
       const state = completion.choices[0].message.content?.trim() || 'NEEDS_INFO';
 
-      if (state === 'INTERESTED' || state === 'NEEDS_INFO' || state === 'NEW_LEAD') {
+      if (state !== 'NOT_INTERESTED') {
         await prisma.lead.update({ where: { id: lead.id }, data: { nextBestAction: 'Answer and Push Booking' } });
         await whatsappQueue.add('send-whatsapp', { 
           leadId: lead.id, 
